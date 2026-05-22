@@ -1,0 +1,827 @@
+﻿@model SupportU.Application.DTOs.TicketDTO
+@{
+    Func<string, string> t = key =>
+    {
+        var translations = ViewData["Translations"] as Dictionary<string, string>
+            ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        return translations.TryGetValue(key, out var val) ? val : key;
+    };
+    ViewData["Title"] = t("Ticket_Details_Title");
+
+    var diasResolucion = Model.FechaCierre.HasValue
+        ? (Model.FechaCierre.Value - Model.FechaCreacion).Days
+        : (DateTime.Now - Model.FechaCreacion).Days;
+
+    var tiempoRespuestaMinutos = Model.Categoria.Sla.TiempoRespuestaMinutos;
+    var tiempoResolucionMinutos = Model.Categoria.Sla.TiempoResolucionMinutos;
+
+    var fechaLimiteRespuesta = Model.FechaCreacion.AddMinutes(tiempoRespuestaMinutos);
+    var fechaLimiteResolucion = Model.FechaCreacion.AddMinutes(tiempoResolucionMinutos);
+
+    //  Determinar permisos para botones
+    var esAdmin = ViewBag.RolUsuario == "Administrador";
+    var esTecnico = ViewBag.RolUsuario == "Técnico";
+    var esCliente = ViewBag.RolUsuario == "Cliente";
+    var esCreador = Model.UsuarioSolicitanteId == ViewBag.UsuarioId;
+    var esTecnicoAsignado = Model.TecnicoAsignadoId.HasValue && Model.TecnicoAsignado?.UsuarioId == ViewBag.UsuarioId;
+
+    // ✅ AGREGADO: Variable para controlar quién puede editar
+    var puedeEditar = esAdmin || esCreador || (esTecnico && esTecnicoAsignado);
+
+    // Botón "Cambiar Estado" para técnicos y admin (no si está cerrado)
+    var puedeVerBotonCambiarEstado = (esTecnico && esTecnicoAsignado && Model.Estado != "Cerrado" && Model.Estado != "Resuelto")
+                                      || (esAdmin && Model.Estado != "Cerrado");
+
+    // Botón "Cerrar Ticket" solo para Admin y Cliente-creador cuando está en "Resuelto"
+    var puedeVerBotonCerrar = (esAdmin || (esCliente && esCreador)) && Model.Estado == "Resuelto";
+}
+
+<style>
+    .collapse-toggle {
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: inline-block;
+        font-size: 0.9rem;
+        color: #6c757d;
+        width: 18px;
+        text-align: center;
+    }
+
+        .collapse-toggle.collapsed::before {
+            content: '▸';
+        }
+
+        .collapse-toggle:not(.collapsed)::before {
+            content: '▾';
+        }
+
+    .historial-item {
+        transition: background-color 0.2s ease;
+    }
+
+        .historial-item:hover {
+            background-color: #f8f9fa;
+        }
+
+    .image-gallery {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        padding: 15px;
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        margin-top: 10px;
+    }
+
+        .image-gallery img {
+            transition: transform 0.2s ease;
+            cursor: pointer;
+        }
+
+            .image-gallery img:hover {
+                transform: scale(1.05);
+            }
+</style>
+
+<div class="container mt-4" style="padding-top: 80px;">
+    <div class="text-center mb-4">
+        <h1 class="display-6 fw-bold text-dark">@t("Ticket_Details_Header")@Model.TicketId</h1>
+        <p class="text-muted">@t("Ticket_Details_Subtitle")</p>
+    </div>
+
+    <div class="text-center mb-4">
+        <div class="btn-group" role="group">
+            <!-- Botón Regresar - Todos -->
+            <a asp-action="Index" class="btn btn-outline-primary">
+                <i class="bi bi-arrow-left me-2"></i>@t("Btn_BackToList")
+            </a>
+
+            @if (puedeEditar)
+            {
+                <a asp-action="Edit" asp-route-id="@Model.TicketId" class="btn btn-warning">
+                    <i class="bi bi-pencil-square me-2"></i>@t("Btn_EditTicket")
+                </a>
+            }
+
+            <!-- Botón Cambiar Estado - Técnicos y Admin -->
+            @if (puedeVerBotonCambiarEstado)
+            {
+                <button type="button" class="btn btn-info" onclick="abrirModalCambioEstado(@Model.TicketId)">
+                    <i class="bi bi-arrow-repeat me-2"></i>@t("Btn_ChangeStatus")
+                </button>
+            }
+
+            <!--  Botón Cerrar Ticket - Admin y Cliente propietario -->
+            @if (puedeVerBotonCerrar)
+            {
+                <button type="button" class="btn btn-success" onclick="abrirModalCambioEstado(@Model.TicketId)">
+                    <i class="bi bi-check-circle me-2"></i>@t("Btn_CloseTicket")
+                </button>
+            }
+        </div>
+    </div>
+
+    <!-- Alerta cuando está Resuelto y puede cerrar -->
+    @if (Model.Estado == "Resuelto" && puedeVerBotonCerrar)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="bi bi-info-circle-fill me-2"></i>
+            <strong>@t("Alert_Resolved_Title")</strong>
+            @t("Alert_Resolved_Text")
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <!-- Información Básica del Ticket -->
+            <div class="card mb-4 border-0 shadow-sm">
+                <div class="card-header bg-white border-bottom">
+                    <h5 class="mb-0 text-dark">@t("Section_BasicInfo")</h5>
+                </div>
+                <div class="card-body">
+                    <dl class="row mb-0">
+                        <dt class="col-sm-4 text-muted">@t("Label_Title")</dt>
+                        <dd class="col-sm-8">@Html.DisplayFor(model => model.Titulo)</dd>
+
+                        <dt class="col-sm-4 text-muted">@t("Label_Description")</dt>
+                        <dd class="col-sm-8">@Html.DisplayFor(model => model.Descripcion)</dd>
+
+                        <dt class="col-sm-4 text-muted">@t("Label_CreationDate")</dt>
+                        <dd class="col-sm-8">@Model.FechaCreacion.ToString("dd/MM/yyyy HH:mm")</dd>
+
+                        <dt class="col-sm-4 text-muted">@t("Label_Status")</dt>
+                        <dd class="col-sm-8">
+                            @{
+                                var estadoBadgeClass = Model.Estado switch
+                                {
+                                    "Pendiente" => "bg-secondary",
+                                    "Asignado" => "bg-primary",
+                                    "En Proceso" => "bg-info",
+                                    "Resuelto" => "bg-success",
+                                    "Cerrado" => "bg-dark",
+                                    _ => "bg-secondary"
+                                };
+                                var estadoTraducido = Model.Estado switch
+                                {
+                                    "Pendiente" => t("Status_Pending"),
+                                    "Asignado" => t("Status_Assigned"),
+                                    "En Proceso" => t("Status_InProgress"),
+                                    "Resuelto" => t("Status_Resolved"),
+                                    "Cerrado" => t("Status_Closed"),
+                                    _ => Model.Estado
+                                };
+                            }
+                            <span class="badge @estadoBadgeClass">@estadoTraducido</span>
+                        </dd>
+
+                        <dt class="col-sm-4 text-muted">@t("Label_Priority")</dt>
+                        <dd class="col-sm-8">
+                            <span class="badge bg-secondary">@Html.DisplayFor(model => model.Prioridad)</span>
+                        </dd>
+
+                        <dt class="col-sm-4 text-muted">@t("Label_Requester")</dt>
+                        <dd class="col-sm-8">
+                            @Model.UsuarioSolicitante.Nombre @Model.UsuarioSolicitante.Apellidos
+                        </dd>
+
+                        <dt class="col-sm-4 text-muted">@t("Label_Category")</dt>
+                        <dd class="col-sm-8">@Html.DisplayFor(model => model.Categoria.Nombre)</dd>
+
+                        @if (Model.TecnicoAsignado != null)
+                        {
+                            <dt class="col-sm-4 text-muted">@t("Label_AssignedTechnician")</dt>
+                            <dd class="col-sm-8">
+                                @Model.TecnicoAsignado.Usuario.Nombre @Model.TecnicoAsignado.Usuario.Apellidos
+                            </dd>
+                        }
+
+                        @if (Model.FechaCierre.HasValue)
+                        {
+                            <dt class="col-sm-4 text-muted">@t("Label_CloseDate")</dt>
+                            <dd class="col-sm-8">@Model.FechaCierre.Value.ToString("dd/MM/yyyy HH:mm")</dd>
+
+                            <dt class="col-sm-4 text-muted">@t("Label_ResolutionDays")</dt>
+                            <dd class="col-sm-8">@diasResolucion @t("ResolutionDays_Value")</dd>
+                        }
+                    </dl>
+                </div>
+            </div>
+
+            <!-- SLA y Cumplimiento -->
+            <div class="card mb-4 border-0 shadow-sm">
+                <div class="card-header bg-white border-bottom">
+                    <h5 class="mb-0 text-dark">@t("Section_SLA")</h5>
+                </div>
+                <div class="card-body">
+                    <dl class="row mb-0">
+                        <dt class="col-sm-4 text-muted">@t("Label_ResponseSLA")</dt>
+                        <dd class="col-sm-8">@fechaLimiteRespuesta.ToString("dd/MM/yyyy HH:mm")</dd>
+
+                        <dt class="col-sm-4 text-muted">@t("Label_ResolutionSLA")</dt>
+                        <dd class="col-sm-8">@fechaLimiteResolucion.ToString("dd/MM/yyyy HH:mm")</dd>
+
+                        @if (Model.CumplimientoRespuesta.HasValue)
+                        {
+                            <dt class="col-sm-4 text-muted">@t("Label_ResponseCompliance")</dt>
+                            <dd class="col-sm-8">
+                                <span class="badge bg-@(Model.CumplimientoRespuesta.Value ? "success" : "danger")">
+                                    @(Model.CumplimientoRespuesta.Value ? t("Compliance_Met") : t("Compliance_NotMet"))
+                                </span>
+                            </dd>
+                        }
+
+                        @if (Model.CumplimientoResolucion.HasValue)
+                        {
+                            <dt class="col-sm-4 text-muted">@t("Label_ResolutionCompliance")</dt>
+                            <dd class="col-sm-8">
+                                <span class="badge bg-@(Model.CumplimientoResolucion.Value ? "success" : "danger")">
+                                    @(Model.CumplimientoResolucion.Value ? t("Compliance_Met") : t("Compliance_NotMet"))
+                                </span>
+                            </dd>
+                        }
+                    </dl>
+                </div>
+            </div>
+
+            <!-- Historial de Estados -->
+            <div class="card mb-4 border-0 shadow-sm">
+                <div class="card-header bg-white border-bottom">
+                    <h5 class="mb-0 text-dark">@t("Section_StatusHistory")</h5>
+                </div>
+                <div class="card-body">
+                    @if (Model.HistorialEstado.Any())
+                    {
+                        <div class="list-group list-group-flush">
+                            @foreach (var historial in Model.HistorialEstado.OrderByDescending(h => h.FechaCambio))
+                            {
+                                var imagenesDelHistorial = Model.Imagen.Where(img => img.HistorialEstadoId == historial.HistorialId).ToList();
+                                var collapseId = $"collapse-historial-{historial.HistorialId}";
+
+                                <div class="list-group-item px-0 historial-item">
+                                    <div class="d-flex w-100 justify-content-between align-items-center mb-2">
+                                        <div class="d-flex align-items-center">
+                                            @if (imagenesDelHistorial.Any())
+                                            {
+                                                <span class="collapse-toggle collapsed me-2"
+                                                      data-bs-toggle="collapse"
+                                                      data-bs-target="#@collapseId"
+                                                      aria-expanded="false"
+                                                      aria-controls="@collapseId">
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span class="me-2" style="width: 18px; display: inline-block;"></span>
+                                            }
+
+                                            <h6 class="mb-0">
+                                                <span class="text-muted">@(historial.EstadoAnterior ?? t("StatusHistory_Initial"))</span>
+                                                <span class="mx-2">→</span>
+                                                <strong class="text-dark">@historial.EstadoNuevo</strong>
+                                            </h6>
+                                        </div>
+                                        <small class="text-muted">@historial.FechaCambio.ToString("dd/MM/yyyy HH:mm")</small>
+                                    </div>
+
+                                    @if (!string.IsNullOrEmpty(historial.Observaciones))
+                                    {
+                                        <p class="mb-2 text-secondary ms-4">@historial.Observaciones</p>
+                                    }
+
+                                    <small class="text-muted ms-4 d-block">
+                                        @t("StatusHistory_By") @historial.Usuario.Nombre @historial.Usuario.Apellidos
+                                    </small>
+
+                                    @if (imagenesDelHistorial.Any())
+                                    {
+                                        <div class="collapse ms-4" id="@collapseId">
+                                            <div class="image-gallery">
+                                                @foreach (var imagen in imagenesDelHistorial)
+                                                {
+                                                    <div>
+                                                        <img src="@imagen.RutaArchivo"
+                                                             alt="@imagen.NombreArchivo"
+                                                             class="img-thumbnail"
+                                                             style="max-width: 150px; max-height: 150px; object-fit: cover;"
+                                                             data-bs-toggle="tooltip"
+                                                             title="@imagen.NombreArchivo" />
+                                                    </div>
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted mb-0">@t("StatusHistory_NoRecords")</p>
+                    }
+                </div>
+            </div>
+
+            <!-- Valoración -->
+            <div class="card mb-4 border-0 shadow-sm">
+                <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 text-dark">
+                        <i class="bi bi-star-fill text-warning"></i> @t("Section_Rating")
+                    </h5>
+
+                    <!-- SOLO mostrar botón si NO es técnico -->
+                    @if (Model.Valoracion == null && (Model.Estado == "Cerrado" || Model.Estado == "Resuelto") && !esTecnico)
+                    {
+                        <a asp-controller="Valoracion"
+                           asp-action="Create"
+                           asp-route-ticketId="@Model.TicketId"
+                           class="btn btn-sm btn-primary">
+                            <i class="bi bi-plus-circle"></i> @t("Btn_AddRating")
+                        </a>
+                    }
+                </div>
+                <div class="card-body">
+                    @if (Model.Valoracion != null)
+                    {
+                        <div class="mb-3">
+                            <strong class="text-muted">@t("Label_Score")</strong>
+                            <div class="mt-2">
+                                @for (int i = 1; i <= 5; i++)
+                                {
+                                    if (i <= Model.Valoracion.Puntaje)
+                                    {
+                                        <i class="bi bi-star-fill text-warning fs-4"></i>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-star text-muted fs-4"></i>
+                                    }
+                                }
+                                <span class="badge bg-warning text-dark ms-2 fs-6">@Model.Valoracion.Puntaje/5</span>
+                            </div>
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(Model.Valoracion.Comentario))
+                        {
+                            <div class="mb-0">
+                                <strong class="text-muted">@t("Label_Comment")</strong>
+                                <div class="card bg-light mt-2">
+                                    <div class="card-body">
+                                        <p class="mb-0">@Model.Valoracion.Comentario</p>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+
+                        <hr class="my-3" />
+
+                        <div class="d-flex justify-content-between align-items-center">
+                            <small class="text-muted">
+                                <i class="bi bi-calendar"></i>
+                                @t("Label_RatedOn") @Model.Valoracion.FechaValoracion.ToString("dd/MM/yyyy HH:mm")
+                            </small>
+                            <!-- SOLO mostrar botón de detalles si NO es técnico -->
+                            @if (!esTecnico)
+                            {
+                                <a asp-controller="Valoracion"
+                                   asp-action="Details"
+                                   asp-route-id="@Model.Valoracion.ValoracionId"
+                                   class="btn btn-sm btn-outline-info">
+                                    <i class="bi bi-eye"></i> @t("Btn_ViewFullDetails")
+                                </a>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        @if (Model.Estado == "Cerrado" || Model.Estado == "Resuelto")
+                        {
+                            <div class="text-center py-4">
+                                <i class="bi bi-star text-muted" style="font-size: 3rem;"></i>
+                                <p class="text-muted mt-3 mb-3">@t("Rating_NoRating")</p>
+
+                                <!-- SOLO mostrar botón de crear si NO es técnico -->
+                                @if (!esTecnico)
+                                {
+                                    <a asp-controller="Valoracion"
+                                       asp-action="Create"
+                                       asp-route-ticketId="@Model.TicketId"
+                                       class="btn btn-primary">
+                                        <i class="bi bi-plus-circle"></i> @t("Btn_AddRatingNow")
+                                    </a>
+                                }
+                                else
+                                {
+                                    <!-- Mensaje alternativo para técnicos -->
+                                    <p class="text-muted">
+                                        <i class="bi bi-info-circle"></i>
+                                        @t("Rating_TechnicianNote")
+                                    </p>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="alert alert-info mb-0">
+                                <i class="bi bi-info-circle"></i>
+                                @t("Rating_InfoAlert")
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+
+            <!-- Imágenes Iniciales del Ticket -->
+            @{
+                var imagenesGenerales = Model.Imagen.Where(img => img.HistorialEstadoId == null).ToList();
+            }
+            @if (imagenesGenerales.Any())
+            {
+                <div class="card mb-4 border-0 shadow-sm">
+                    <div class="card-header bg-white border-bottom">
+                        <h5 class="mb-0 text-dark">@t("Section_InitialImages")</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            @foreach (var imagen in imagenesGenerales)
+                            {
+                                <div class="col-6 col-md-4">
+                                    <img src="@imagen.RutaArchivo"
+                                         alt="@imagen.NombreArchivo"
+                                         class="img-fluid rounded shadow-sm"
+                                         style="object-fit: cover; width: 100%; height: 150px;" />
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <!-- Botones inferiores -->
+            <div class="text-center mb-5">
+                <a asp-action="Index" class="btn btn-outline-primary">
+                    <i class="bi bi-arrow-left me-2"></i>@t("Btn_BackToList")
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!--  MODAL ÚNICO PARA CAMBIAR ESTADO (compartido con Edit.cshtml) -->
+<div class="modal fade" id="modalCambioEstado" tabindex="-1" aria-labelledby="modalCambioEstadoLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modalCambioEstadoLabel">
+                    <i class="bi bi-arrow-right-circle me-2"></i>@t("Modal_ChangeStatus_Title")
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="modalCambioEstadoBody">
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">@t("Modal_Loading")</span>
+                    </div>
+                    <p class="mt-3">@t("Modal_LoadingForm")</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <!--  AGREGAR SWEETALERT2 -->
+    <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <script>
+        // Textos traducidos para JavaScript
+        const translations = {
+            alertImageRequired: '@t("Alert_ImageRequired")',
+            alertObservationsRequired: '@t("Alert_ObservationsRequired")',
+            btnSaving: '@t("Btn_Saving")',
+            swalSuccessTitle: '@t("Swal_Success_Title")',
+            swalSuccessMessage: '@t("Swal_Success_Message")',
+            swalSuccessReloading: '@t("Swal_Success_Reloading")',
+            swalErrorTitle: '@t("Swal_Error_Title")',
+            swalErrorChangeStatus: '@t("Swal_Error_ChangeStatus")',
+            swalErrorProcessing: '@t("Swal_Error_Processing")',
+            modalErrorLoading: '@t("Modal_ErrorLoading")',
+            previewNoImages: '@t("Preview_NoImages")',
+            previewSelectStatus: '@t("Preview_SelectStatus")'
+        };
+
+        // Toggle de imágenes en historial
+        document.querySelectorAll('.collapse-toggle').forEach(toggle => {
+            toggle.addEventListener('click', function () {
+                this.classList.toggle('collapsed');
+            });
+        });
+
+        // Tooltips
+        const tooltips = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        tooltips.map(el => new bootstrap.Tooltip(el));
+
+        // Función única para abrir el modal de cambiar estado
+        async function abrirModalCambioEstado(ticketId) {
+            const modal = new bootstrap.Modal(document.getElementById('modalCambioEstado'));
+            const modalBody = document.getElementById('modalCambioEstadoBody');
+
+            modal.show();
+
+            try {
+                const response = await fetch(`/HistorialEstados/CambiarEstadoPartial?ticketId=${ticketId}`);
+
+                if (!response.ok) {
+                    throw new Error('Error al cargar el formulario');
+                }
+
+                const html = await response.text();
+                modalBody.innerHTML = html;
+
+                configurarFormularioModal();
+            } catch (error) {
+                console.error('Error al cargar formulario:', error);
+                modalBody.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        ${translations.modalErrorLoading}
+                    </div>
+                `;
+            }
+        }
+
+        function configurarFormularioModal() {
+            const form = document.querySelector('#modalCambioEstado form');
+            if (!form) {
+                console.error('No se encontró el formulario en el modal');
+                return;
+            }
+
+            inicializarPreviewImagenes();
+
+            form.addEventListener('submit', async function (e) {
+                e.preventDefault();
+
+                const formData = new FormData(form);
+                const btnSubmit = form.querySelector('button[type="submit"]');
+
+                const headers = {
+                    'X-Requested-With': 'XMLHttpRequest'
+                };
+
+                const imagenesInput = form.querySelector('input[name="imagenes"]');
+                if (!imagenesInput || !imagenesInput.files || imagenesInput.files.length === 0) {
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Atención',
+                        text: translations.alertImageRequired
+                    });
+                    return;
+                }
+
+                const observaciones = formData.get('observaciones');
+                if (!observaciones || observaciones.trim() === '') {
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Atención',
+                        text: translations.alertObservationsRequired
+                    });
+                    return;
+                }
+
+                if (btnSubmit) {
+                    btnSubmit.disabled = true;
+                    btnSubmit.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>' + translations.btnSaving;
+                }
+
+                try {
+                    const response = await fetch(form.action, {
+                        method: 'POST',
+                        body: formData,
+                        headers: headers
+                    });
+
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        throw new Error(`Error ${response.status}: ${response.statusText}`);
+                    }
+
+                    const contentType = response.headers.get('content-type');
+                    if (!contentType || !contentType.includes('application/json')) {
+                        const htmlResponse = await response.text();
+                        throw new Error('El servidor no devolvió JSON.');
+                    }
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        //  CERRAR EL MODAL PRIMERO
+                        const modalInstance = bootstrap.Modal.getInstance(document.getElementById('modalCambioEstado'));
+                        if (modalInstance) {
+                            modalInstance.hide();
+                        }
+
+                        //  REMOVER BACKDROP MANUALMENTE
+                        const backdrop = document.querySelector('.modal-backdrop');
+                        if (backdrop) {
+                            backdrop.remove();
+                        }
+
+                        //  MOSTRAR ALERTA Y RECARGAR
+                        await Swal.fire({
+                            icon: 'success',
+                            title: translations.swalSuccessTitle,
+                            html: `<p><strong>${result.message}</strong></p>
+                                   <p class="text-muted">${translations.swalSuccessMessage} <strong>${result.nuevoEstado}</strong></p>
+                                   <small>${translations.swalSuccessReloading}</small>`,
+                            timer: 2000,
+                            timerProgressBar: true,
+                            showConfirmButton: false,
+                            allowOutsideClick: false,
+                            allowEscapeKey: false
+                        });
+
+                        // RECARGAR LA PÁGINA
+                        window.location.reload();
+
+                    } else {
+                        Swal.fire({
+                            icon: 'error',
+                            title: translations.swalErrorTitle,
+                            text: result.message || translations.swalErrorChangeStatus
+                        });
+
+                        if (btnSubmit) {
+                            btnSubmit.disabled = false;
+                            btnSubmit.innerHTML = '<i class="bi bi-save"></i> Guardar Cambio';
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error al procesar solicitud:', error);
+
+                    Swal.fire({
+                        icon: 'error',
+                        title: translations.swalErrorTitle,
+                        html: `<p>${translations.swalErrorProcessing}</p>
+                            <small class="text-muted">${error.message}</small>`
+                    });
+
+                    if (btnSubmit) {
+                        btnSubmit.disabled = false;
+                        btnSubmit.innerHTML = '<i class="bi bi-save"></i> Guardar Cambio';
+                    }
+                }
+            });
+        }
+
+        function inicializarPreviewImagenes() {
+            const imageInput = document.getElementById('imagenes');
+            const previewContainer = document.getElementById('imagenesPreview');
+            const selectEstado = document.getElementById('nuevoEstado');
+            const previewEstado = document.getElementById('estadoNuevoPreview');
+
+            if (!imageInput || !previewContainer) return;
+
+            let selectedFiles = [];
+
+            imageInput.addEventListener('change', function(e) {
+                const newFiles = Array.from(e.target.files);
+
+                if (newFiles.length === 0) return;
+
+                selectedFiles = [...selectedFiles, ...newFiles];
+                mostrarPreview();
+
+                const dataTransfer = new DataTransfer();
+                selectedFiles.forEach(file => dataTransfer.items.add(file));
+                imageInput.files = dataTransfer.files;
+            });
+
+            function mostrarPreview() {
+                previewContainer.innerHTML = '';
+
+                if (selectedFiles.length === 0) {
+                    previewContainer.innerHTML = '<div class="col-12"><small class="text-muted">' + translations.previewNoImages + '</small></div>';
+                    return;
+                }
+
+                selectedFiles.forEach((file, index) => {
+                    const reader = new FileReader();
+
+                    reader.onload = function(e) {
+                        const col = document.createElement('div');
+                        col.className = 'col-md-3 col-sm-6';
+                        col.innerHTML = `
+                            <div class="preview-card">
+                                <div class="preview-img-container">
+                                    <img src="${e.target.result}" alt="${file.name}">
+                                    <button type="button"
+                                            class="btn btn-danger btn-sm btn-remove-img"
+                                            data-index="${index}"
+                                            title="@t("Preview_Remove")">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                                <div class="preview-info">
+                                    <small class="d-block text-truncate text-muted" title="${file.name}">
+                                        <i class="bi bi-file-image me-1"></i>${file.name}
+                                    </small>
+                                    <small class="text-muted">
+                                        ${(file.size / 1024).toFixed(1)} KB
+                                    </small>
+                                </div>
+                            </div>
+                        `;
+                        previewContainer.appendChild(col);
+
+                        const btnEliminar = col.querySelector('.btn-remove-img');
+                        btnEliminar.addEventListener('click', function() {
+                            eliminarImagen(parseInt(this.dataset.index));
+                        });
+                    };
+
+                    reader.readAsDataURL(file);
+                });
+            }
+
+            function eliminarImagen(index) {
+                selectedFiles.splice(index, 1);
+
+                const dataTransfer = new DataTransfer();
+                selectedFiles.forEach(file => dataTransfer.items.add(file));
+                imageInput.files = dataTransfer.files;
+
+                mostrarPreview();
+            }
+
+            if (selectEstado && previewEstado) {
+                selectEstado.addEventListener('change', function() {
+                    const valor = this.value;
+                    previewEstado.textContent = valor || translations.previewSelectStatus;
+
+                    const colorClasses = {
+                        'Asignado': 'bg-info',
+                        'En Proceso': 'bg-primary',
+                        'Resuelto': 'bg-success',
+                        'Cerrado': 'bg-secondary'
+                    };
+
+                    previewEstado.className = 'badge fs-6 ' + (colorClasses[valor] || 'bg-primary');
+                });
+            }
+        }
+    </script>
+
+    <!-- Estilos para el preview de imágenes -->
+    <style>
+        .modal-lg {
+            max-width: 800px;
+        }
+
+        .preview-card {
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            overflow: hidden;
+            background: white;
+            transition: transform 0.2s;
+        }
+
+            .preview-card:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            }
+
+        .preview-img-container {
+            position: relative;
+            width: 100%;
+            height: 180px;
+            background: #f8f9fa;
+        }
+
+            .preview-img-container img {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+            }
+
+        .btn-remove-img {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            z-index: 10;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .preview-info {
+            padding: 8px;
+            background: white;
+            border-top: 1px solid #dee2e6;
+        }
+
+        .badge.fs-6 {
+            font-size: 1rem !important;
+            padding: 0.5rem 0.75rem;
+        }
+    </style>
+    }

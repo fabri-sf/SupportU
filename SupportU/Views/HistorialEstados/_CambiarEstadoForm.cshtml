@@ -1,0 +1,362 @@
+﻿@model SupportU.Application.DTOs.TicketDTO
+@{
+    var estadosSiguientes = ViewBag.EstadosSiguientes as List<string>;
+
+    Func<string, string> t = key =>
+    {
+        var translations = ViewData["Translations"] as Dictionary<string, string>
+            ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        return translations.TryGetValue(key, out var val) ? val : key;
+    };
+}
+
+<form id="formCambioEstado"
+      asp-controller="HistorialEstados"
+      asp-action="CambiarEstado"
+      method="post"
+      enctype="multipart/form-data"
+      style="max-width: 650px; margin: 0 auto;">
+
+    @Html.AntiForgeryToken()
+    <input type="hidden" name="ticketId" value="@Model.TicketId" />
+
+    <!-- HEADER DEL TICKET -->
+    <div class="card border-0 shadow-sm mb-4" style="border-radius: 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+        <div class="card-body text-white p-4">
+            <div class="d-flex align-items-center justify-content-between mb-3">
+                <div>
+                    <h5 class="mb-1 fw-bold">
+                        <i class="bi bi-ticket-detailed me-2"></i>Ticket #@Model.TicketId
+                    </h5>
+                    <p class="mb-0 opacity-90">@Model.Titulo</p>
+                </div>
+                <span class="badge bg-white text-dark px-3 py-2" style="font-size: 0.95rem;">
+                    @Model.Estado
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- NUEVO ESTADO -->
+    <div class="mb-4">
+        <label for="nuevoEstado" class="form-label text-secondary fw-semibold mb-2">
+            <i class="bi bi-arrow-right-circle me-1"></i>@t("HistorialEstados_Label_NewState")
+        </label>
+        <select id="nuevoEstado"
+                name="nuevoEstado"
+                class="form-select form-select-lg border-0 shadow-sm"
+                style="border-radius: 12px; background-color: white; padding: 0.9rem;"
+                required>
+            <option value="">-- @t("HistorialEstados_Placeholder_SelectNewState") --</option>
+            @if (estadosSiguientes != null && estadosSiguientes.Any())
+            {
+                @foreach (var estado in estadosSiguientes)
+                {
+                    <option value="@estado">@estado</option>
+                }
+            }
+            else
+            {
+                <option value="" disabled>@t("HistorialEstados_NoNextStates")</option>
+            }
+        </select>
+        <small class="text-muted mt-2 d-block" style="font-size: 0.85rem;">
+            <i class="bi bi-info-circle me-1"></i>@t("HistorialEstados_Help_NextStates")
+        </small>
+    </div>
+
+    <!-- PREVIEW DEL CAMBIO -->
+    <div class="card border-0 shadow-sm mb-4" style="border-radius: 12px; background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);">
+        <div class="card-body p-3">
+            <div class="d-flex align-items-center justify-content-center">
+                <span class="badge bg-dark px-3 py-2" style="font-size: 1rem;">@Model.Estado</span>
+                <i class="bi bi-arrow-right mx-3" style="font-size: 1.5rem; color: #333;"></i>
+                <span class="badge bg-dark px-3 py-2" id="estadoNuevoPreview" style="font-size: 1rem;">
+                    @t("HistorialEstados_Placeholder_SelectNewState")
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- OBSERVACIONES -->
+    <div class="mb-4">
+        <label for="observaciones" class="form-label text-secondary fw-semibold mb-2">
+            <i class="bi bi-chat-left-text me-1"></i>@t("HistorialEstados_Label_Observations")
+        </label>
+        <textarea id="observaciones"
+                  name="observaciones"
+                  class="form-control border-0 shadow-sm"
+                  rows="5"
+                  style="border-radius: 12px; background-color: white; resize: none;"
+                  required
+                  placeholder="@t("HistorialEstados_Placeholder_Observations")"></textarea>
+        <small class="text-muted mt-2 d-block" style="font-size: 0.85rem;">
+            <i class="bi bi-exclamation-triangle me-1"></i>@Html.Raw(t("HistorialEstados_Help_Observations"))
+        </small>
+    </div>
+
+    <!-- IMÁGENES -->
+    <div class="mb-4">
+        <label for="imagenes" class="form-label text-secondary fw-semibold mb-2">
+            <i class="bi bi-image me-1"></i>@t("HistorialEstados_Label_Images")
+        </label>
+
+        <!-- Input File Personalizado -->
+        <div class="upload-area border-0 shadow-sm" style="border-radius: 12px; background-color: white; padding: 2rem; text-align: center; cursor: pointer; transition: all 0.3s;">
+            <input type="file"
+                   id="imagenes"
+                   name="imagenes"
+                   class="d-none"
+                   multiple
+                   accept="image/*"
+                   required>
+            <label for="imagenes" style="cursor: pointer; width: 100%; margin: 0;">
+                <i class="bi bi-cloud-upload" style="font-size: 3rem; color: #667eea;"></i>
+                <p class="mb-0 mt-2 text-secondary fw-semibold">Haz clic o arrastra imágenes aquí</p>
+                <small class="text-muted">PNG, JPG, GIF (Máximo 5MB cada una)</small>
+            </label>
+        </div>
+
+        <small class="text-muted mt-2 d-block" style="font-size: 0.85rem;">
+            <i class="bi bi-exclamation-triangle me-1"></i>@Html.Raw(t("HistorialEstados_Help_Images"))
+        </small>
+
+        <!-- Preview de imágenes -->
+        <div id="imagenesPreview" class="mt-3 row g-3">
+            <div class="col-12">
+                <small class="text-muted">@t("HistorialEstados_NoImagesSelected")</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- BOTONES -->
+    <div class="d-flex gap-3 mt-4">
+        <button type="submit"
+                class="btn btn-lg text-white flex-fill shadow-sm"
+                id="btnGuardarCambio"
+                style="border-radius: 12px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; font-weight: 600;">
+            <i class="bi bi-check-circle me-2"></i>@t("HistorialEstados_Btn_SaveChange")
+        </button>
+        <button type="button"
+                class="btn btn-lg btn-light flex-fill shadow-sm"
+                data-bs-dismiss="modal"
+                style="border-radius: 12px; border: none; font-weight: 600; color: #6c757d;">
+            <i class="bi bi-x-circle me-2"></i>@t("HistorialEstados_Btn_Cancel")
+        </button>
+    </div>
+</form>
+
+<style>
+    .upload-area:hover {
+        background-color: #f8f9ff !important;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15) !important;
+    }
+
+    .preview-card {
+        border: none;
+        border-radius: 12px;
+        overflow: hidden;
+        background: white;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        transition: transform 0.2s, box-shadow 0.2s;
+        position: relative;
+    }
+
+        .preview-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.12);
+        }
+
+    .preview-img-container {
+        position: relative;
+        width: 100%;
+        height: 140px;
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        overflow: hidden;
+    }
+
+        .preview-img-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+    .btn-remove-img {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        z-index: 10;
+        background: rgba(220, 53, 69, 0.95);
+        border: none;
+        border-radius: 8px;
+        color: white;
+        padding: 6px 10px;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+        .btn-remove-img:hover {
+            background: rgb(220, 53, 69);
+            transform: scale(1.1);
+        }
+
+    .preview-info {
+        padding: 10px;
+        background: white;
+        border-top: 1px solid #e9ecef;
+    }
+
+    .form-control:focus,
+    .form-select:focus {
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15) !important;
+        border-color: transparent !important;
+    }
+
+    .btn:hover {
+        transform: translateY(-2px);
+        transition: all 0.2s ease;
+    }
+
+    .btn:active {
+        transform: translateY(0);
+    }
+</style>
+
+@section Scripts {
+    <script>
+        (function () {
+            try {
+                window.__i18n = window.__i18n || {};
+                window.__i18n.translations = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(ViewData["Translations"] ?? new Dictionary<string, string>()));
+                window.__i18n.t = function (k, f) { return (window.__i18n.translations && window.__i18n.translations[k]) ? window.__i18n.translations[k] : (f || k); };
+            } catch (e) { window.__i18n = window.__i18n || { translations: {} }; }
+
+            // Preview de imágenes mejorado
+            var input = document.getElementById('imagenes');
+            var preview = document.getElementById('imagenesPreview');
+            var uploadArea = document.querySelector('.upload-area');
+
+            if (input && preview) {
+                // Manejo de archivos
+                input.addEventListener('change', function () {
+                    mostrarPreviews(Array.from(input.files || []));
+                });
+
+                // Drag and drop
+                uploadArea.addEventListener('dragover', function(e) {
+                    e.preventDefault();
+                    this.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                    this.style.color = 'white';
+                });
+
+                uploadArea.addEventListener('dragleave', function(e) {
+                    e.preventDefault();
+                    this.style.background = 'white';
+                    this.style.color = '';
+                });
+
+                uploadArea.addEventListener('drop', function(e) {
+                    e.preventDefault();
+                    this.style.background = 'white';
+                    this.style.color = '';
+
+                    var dt = new DataTransfer();
+                    Array.from(e.dataTransfer.files).forEach(file => dt.items.add(file));
+                    input.files = dt.files;
+                    mostrarPreviews(Array.from(dt.files));
+                });
+
+                function mostrarPreviews(files) {
+                    preview.innerHTML = '';
+                    if (files.length === 0) {
+                        preview.innerHTML = '<div class="col-12"><small class="text-muted">' +
+                            window.__i18n.t('HistorialEstados_NoImagesSelected', 'No hay imágenes seleccionadas') +
+                            '</small></div>';
+                        return;
+                    }
+
+                    files.forEach(function (file, index) {
+                        var col = document.createElement('div');
+                        col.className = 'col-md-4 col-sm-6';
+
+                        var card = document.createElement('div');
+                        card.className = 'preview-card';
+
+                        var imgContainer = document.createElement('div');
+                        imgContainer.className = 'preview-img-container';
+
+                        var img = document.createElement('img');
+                        img.src = URL.createObjectURL(file);
+                        img.onload = function() { URL.revokeObjectURL(this.src); };
+
+                        var btnRemove = document.createElement('button');
+                        btnRemove.className = 'btn-remove-img';
+                        btnRemove.innerHTML = '<i class="bi bi-x"></i>';
+                        btnRemove.type = 'button';
+                        btnRemove.onclick = function() {
+                            eliminarImagen(index);
+                        };
+
+                        var info = document.createElement('div');
+                        info.className = 'preview-info';
+                        info.innerHTML = '<small class="text-muted"><i class="bi bi-file-image me-1"></i>' +
+                            file.name.substring(0, 20) + (file.name.length > 20 ? '...' : '') +
+                            '</small><br><small class="text-muted">' +
+                            (file.size / 1024).toFixed(1) + ' KB</small>';
+
+                        imgContainer.appendChild(img);
+                        imgContainer.appendChild(btnRemove);
+                        card.appendChild(imgContainer);
+                        card.appendChild(info);
+                        col.appendChild(card);
+                        preview.appendChild(col);
+                    });
+                }
+
+                function eliminarImagen(index) {
+                    var dt = new DataTransfer();
+                    var files = Array.from(input.files);
+                    files.splice(index, 1);
+                    files.forEach(file => dt.items.add(file));
+                    input.files = dt.files;
+                    mostrarPreviews(files);
+                }
+            }
+
+            // Actualizar preview de estado seleccionado
+            var selectEstado = document.getElementById('nuevoEstado');
+            var estadoPreview = document.getElementById('estadoNuevoPreview');
+            if (selectEstado && estadoPreview) {
+                selectEstado.addEventListener('change', function () {
+                    estadoPreview.textContent = selectEstado.value ||
+                        window.__i18n.t('HistorialEstados_Placeholder_SelectNewState', 'Seleccione estado');
+                });
+            }
+
+            // Animaciones en inputs
+            var inputs = document.querySelectorAll('.form-control, .form-select');
+            inputs.forEach(input => {
+                input.addEventListener('focus', function() {
+                    this.style.transform = 'translateY(-2px)';
+                    this.style.transition = 'all 0.2s ease';
+                });
+
+                input.addEventListener('blur', function() {
+                    this.style.transform = 'translateY(0)';
+                });
+            });
+
+            // Confirmación al enviar
+            document.getElementById('formCambioEstado').addEventListener('submit', function(e) {
+                var btn = document.getElementById('btnGuardarCambio');
+                if (btn) {
+                    btn.disabled = true;
+                    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>' +
+                        window.__i18n.t('Btn_Saving', 'Guardando...');
+                }
+            });
+        })();
+    </script>
+}

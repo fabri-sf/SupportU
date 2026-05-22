@@ -1,0 +1,15 @@
+2026-05-07 19:23:36.724 -06:00 [INF] RepositoryTicket.AddAsync called. Titulo=Monitor no enciende
+2026-05-07 19:23:36.899 -06:00 [INF] RepositoryTicket.AddAsync completed. Id=14
+2026-05-07 19:23:36.910 -06:00 [INF] Iniciando cambio de estado para ticket 14 de null a Pendiente
+2026-05-07 19:23:36.914 -06:00 [INF]  RepositoryTicket.FindByIdAsyncForUpdate - Buscando ticket 14
+2026-05-07 19:23:36.934 -06:00 [INF]  Resultado: ENCONTRADO
+2026-05-07 19:23:36.938 -06:00 [INF]  Ticket 14: Estado=Pendiente, CategoriaId=1, UsuarioId=10
+2026-05-07 19:23:37.084 -06:00 [INF] Verificando SLA del ticket 14. Creado: "2026-05-07T19:23:36.7181843-06:00", Limite respuesta: "2026-05-07T23:23:36.7181843-06:00", Limite resolucion: "2026-05-08T19:23:36.7181843-06:00"
+2026-05-07 19:23:37.087 -06:00 [INF] RepositoryTicket.UpdateAsync called. Id=14
+2026-05-07 19:23:37.105 -06:00 [INF] RepositoryTicket.UpdateAsync completed. Id=14
+2026-05-07 19:23:37.106 -06:00 [INF] Estado del ticket actualizado, SLA calculado exitosamente
+2026-05-07 19:23:37.108 -06:00 [INF] RepositoryHistorialEstados.AddAsync called. TicketId=14, EstadoNuevo=Pendiente
+2026-05-07 19:23:37.131 -06:00 [INF] RepositoryHistorialEstados.AddAsync completed. Id=22
+2026-05-07 19:23:37.132 -06:00 [INF] Historial de cambio de estado creado con ID 22
+2026-05-07 19:23:37.155 -06:00 [INF] Notificacion de cambio de estado enviada al usuario solicitante 10
+2026-05-07 19:23:37.156 -06:00 [INF] El ticket 14 no tiene tecnico asignado, omitiendo notificacion

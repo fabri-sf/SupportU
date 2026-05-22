@@ -1,0 +1,105 @@
+﻿@model SupportU.Application.DTOs.CategoriaDTO
+@{
+    Func<string, string> t = key =>
+    {
+        var translations = ViewData["Translations"] as Dictionary<string, string> ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        return translations.TryGetValue(key, out var v) ? v : key;
+    };
+    ViewData["Title"] = t("Categoria_Create_Title");
+}
+
+<section class="section mt-5 mt-lg-7 pt-4 pt-lg-5">
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <h4 class="card-title">@t("Categoria_Create_Header")</h4>
+            <form asp-action="Create" method="post" novalidate>
+                @Html.AntiForgeryToken()
+
+                <div class="mb-3">
+                    <label asp-for="Nombre" class="form-label fw-bold">@t("Label_Nombre")</label>
+                    <input asp-for="Nombre" class="form-control" />
+                    <span asp-validation-for="Nombre" class="text-danger"></span>
+                </div>
+
+                <div class="mb-3">
+                    <label asp-for="Descripcion" class="form-label fw-bold">@t("Label_Descripcion")</label>
+                    <textarea asp-for="Descripcion" class="form-control" rows="2"></textarea>
+                    <span asp-validation-for="Descripcion" class="text-danger"></span>
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label asp-for="SlaId" class="form-label fw-bold">@t("Label_SLA")</label>
+                        <select asp-for="SlaId" class="form-select" asp-items="ViewBag.Slas">
+                            <option value="">@t("Select_Placeholder")</option>
+                        </select>
+                        <span asp-validation-for="SlaId" class="text-danger"></span>
+                        <div class="form-text">@t("Help_SelectSLA")</div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label asp-for="CriterioAsignacion" class="form-label fw-bold">@t("Label_CriterioAsignacion")</label>
+                        <select asp-for="CriterioAsignacion" class="form-select" asp-items="ViewBag.AssignmentTypes"></select>
+                        <span asp-validation-for="CriterioAsignacion" class="text-danger"></span>
+                        <div class="form-text">@t("Help_CriterioAsignacion")</div>
+                    </div>
+                </div>
+
+                <!-- ✅ SELECTOR DE ESPECIALIDADES -->
+                <div class="mb-3 mt-3">
+                    <label class="form-label fw-bold">
+                        <i class="bi bi-tools me-1"></i>Especialidades Requeridas
+                    </label>
+                    <div class="border rounded p-3" style="max-height: 250px; overflow-y: auto; background-color: #f8f9fa;">
+                        @if (ViewBag.Especialidades != null && ((List<SelectListItem>)ViewBag.Especialidades).Any())
+                        {
+                            foreach (var especialidad in (List<SelectListItem>)ViewBag.Especialidades)
+                            {
+                                <div class="form-check mb-2">
+                                    <input type="checkbox"
+                                           name="especialidadesSeleccionadas"
+                                           value="@especialidad.Value"
+                                           class="form-check-input"
+                                           id="esp_@especialidad.Value"
+                                           @(especialidad.Selected ? "checked" : "") />
+                                    <label class="form-check-label" for="esp_@especialidad.Value">
+                                        <strong>@especialidad.Text</strong>
+                                    </label>
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <div class="alert alert-warning mb-0" role="alert">
+                                <i class="bi bi-exclamation-triangle me-2"></i>
+                                No hay especialidades disponibles. Cree especialidades primero.
+                            </div>
+                        }
+                    </div>
+                    <div class="form-text">
+                        <i class="bi bi-lightbulb me-1"></i>
+                        Seleccione las especialidades que debe tener un técnico para atender tickets de esta categoría
+                    </div>
+                </div>
+
+                <div class="form-check form-switch mt-3">
+                    <input asp-for="Activa" class="form-check-input" />
+                    <label asp-for="Activa" class="form-check-label">@t("Label_Activa")</label>
+                </div>
+
+                <div class="mt-4 d-flex gap-2">
+                    <button type="submit" class="btn btn-success">
+                        <i class="bi bi-save"></i> @t("Btn_Save")
+                    </button>
+                    <a asp-action="Index" class="btn btn-outline-secondary">
+                        <i class="bi bi-x-circle"></i> @t("Btn_Cancel")
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+</section>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

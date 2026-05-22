@@ -1,0 +1,58 @@
+﻿@model SupportU.Application.DTOs.EspecialidadDTO
+@{
+    Func<string, string> t = key =>
+    {
+        var translations = ViewData["Translations"] as Dictionary<string, string>
+            ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        return translations.TryGetValue(key, out var val) ? val : key;
+    };
+
+    ViewData["Title"] = Model.Activa ? t("Especialidad_Delete_Inactivate_Title") : t("Especialidad_Delete_Reactivate_Title");
+}
+
+<section class="section mt-5 mt-lg-7 pt-4 pt-lg-5">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-7">
+                <div class="card shadow-sm">
+                    <div class="card-body p-4">
+                        <h2 class="mb-3">@ViewData["Title"]</h2>
+                        <dl class="row mb-4">
+                            <dt class="col-sm-4">@t("Especialidad_Label_Nombre")</dt>
+                            <dd class="col-sm-8">@Model.Nombre</dd>
+                            <dt class="col-sm-4">@t("Especialidad_Label_Activa")</dt>
+                            <dd class="col-sm-8">@(Model.Activa ? t("Especialidad_Yes") : t("Especialidad_No"))</dd>
+                        </dl>
+
+                        @if (Model.Activa)
+                        {
+                            <form asp-action="DeleteConfirmed" asp-route-id="@Model.EspecialidadId" method="post">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="estado" value="1" />
+                                <div class="d-flex gap-2 justify-content-end">
+                                    <button type="submit" class="btn btn-danger">@t("Especialidad_Btn_Inactivate")</button>
+                                    <a asp-action="Index" class="btn btn-outline-secondary">@t("Especialidad_Btn_Cancel")</a>
+                                </div>
+                            </form>
+                        }
+                        else
+                        {
+                            <form asp-action="DeleteConfirmed" asp-route-id="@Model.EspecialidadId" method="post">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="estado" value="0" />
+                                <div class="d-flex gap-2 justify-content-end">
+                                    <button type="submit" class="btn btn-success">@t("Especialidad_Btn_Reactivate")</button>
+                                    <a asp-action="Index" class="btn btn-outline-secondary">@t("Especialidad_Btn_Cancel")</a>
+                                </div>
+                            </form>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}
